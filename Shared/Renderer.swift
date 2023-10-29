@@ -47,7 +47,8 @@ final class Renderer: NSObject, MTKViewDelegate, ObservableObject {
         AVVideoHeightKey: 1080,
         AVVideoCompressionPropertiesKey: [
             kVTCompressionPropertyKey_AverageBitRate: 6_000_000,
-            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_High_4_2
+            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_High_4_1
+                // was kVTProfileLevel_H264_High_4_2  codec not supported on the iPad
         ]
         ]
 
@@ -81,6 +82,7 @@ final class Renderer: NSObject, MTKViewDelegate, ObservableObject {
         assetWriter.outputFileTypeProfile = AVFileTypeProfile.mpeg4AppleHLS
 
         videoWriterInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoCompressionSettings)
+        assetWriter.add(videoWriterInput)
         // end video
 
         super.init()
@@ -161,11 +163,15 @@ final class Renderer: NSObject, MTKViewDelegate, ObservableObject {
 
                     // MARK: Video
                 // drawable is a CAMetalDrawable.. submit to the video capture
-                let thisBuffer =  drawable.texture.buffer
-                let theSampleBuffer = thisBuffer as! CMSampleBuffer  // downcast from MTLBuffer to CMSampleBuffer always succeeds
+                let viewMetalLayer = view.layer.contents as! CMSampleBuffer
+                if let thisBuffer =  drawable.texture.buffer {
+                    let theSampleBuffer = thisBuffer as! CMSampleBuffer  // downcast from MTLBuffer to CMSampleBuffer always succeeds
 
-               // AVAssetWriterInput 
-                videoWriterInput.append( theSampleBuffer)
+                        // AVAssetWriterInput
+                    videoWriterInput.append( theSampleBuffer) } 
+                else {
+                    videoWriterInput.append(viewMetalLayer)
+                    }
                 // end Video
             }
         }
