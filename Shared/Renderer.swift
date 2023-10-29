@@ -3,11 +3,24 @@ See LICENSE folder for this sample’s licensing information.
 
 Abstract:
 A delegate class for this application's `MTKView`.
+
+ Adding video input code from sample app fmp4writer
+ see class ReaderWriter
+
 */
+
+
 
 import Metal
 import MetalKit
 import CoreImage
+
+//MARK: Video
+import AVFoundation
+import VideoToolbox
+import Combine
+// end Video
+
 
 let maxBuffersInFlight = 3
 /// - Tag: Renderer
@@ -19,9 +32,32 @@ final class Renderer: NSObject, MTKViewDelegate, ObservableObject {
     let opaqueBackground: CIImage
     let imageProvider: (_ time: CFTimeInterval, _ contentScaleFactor: CGFloat, _ headroom: CGFloat) -> CIImage
     let startTime: CFAbsoluteTime
-    
+
     let inFlightSemaphore = DispatchSemaphore(value: maxBuffersInFlight)
     
+// MARK: Video
+    private let assetWriter: AVAssetWriter
+
+    let videoWriterInput: AVAssetWriterInput // from  fmp4writer sample app
+    let videoCompressionSettings: [String: Any] = [
+        AVVideoCodecKey: AVVideoCodecType.h264,
+        // For simplicity, assume 16:9 aspect ratio.
+        // For a production use case, modify this as necessary to match the source content.
+        AVVideoWidthKey: 1920,
+        AVVideoHeightKey: 1080,
+        AVVideoCompressionPropertiesKey: [
+            kVTCompressionPropertyKey_AverageBitRate: 6_000_000,
+            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_High_4_2
+        ]
+        ]
+
+    private let videoDone = PassthroughSubject<Void, Error>()
+    let startTimeOffset = CMTime(value: 10, timescale: 1)
+
+
+    // end Video
+
+
     init(imageProvider: @escaping (_ time: CFTimeInterval, _ contentScaleFactor: CGFloat, _ headroom: CGFloat) -> CIImage) {
         self.imageProvider = imageProvider
 
@@ -39,6 +75,14 @@ final class Renderer: NSObject, MTKViewDelegate, ObservableObject {
         self.opaqueBackground = CIImage.gray
 
         self.startTime = CFAbsoluteTimeGetCurrent()
+
+        // MARK: Video
+        assetWriter = AVAssetWriter(contentType: UTType( AVFileType.mp4.rawValue)!)
+        assetWriter.outputFileTypeProfile = AVFileTypeProfile.mpeg4AppleHLS
+
+        videoWriterInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoCompressionSettings)
+        // end video
+
         super.init()
     }
     /// - Tag: draw
@@ -114,10 +158,39 @@ final class Renderer: NSObject, MTKViewDelegate, ObservableObject {
                 
                 // Commit the command buffer so that the GPU executes the work that the Core Image Render Task issues.
                 commandBuffer.commit()
+
+                    // MARK: Video
+                // drawable is a CAMetalDrawable.. submit to the video capture
+                let thisBuffer =  drawable.texture.buffer
+                let theSampleBuffer = thisBuffer as! CMSampleBuffer  // downcast from MTLBuffer to CMSampleBuffer always succeeds
+
+               // AVAssetWriterInput 
+                videoWriterInput.append( theSampleBuffer)
+                // end Video
             }
         }
     }
     
+        // MARK: Video
+    func videoFinish() {
+        self.videoWriterInput.markAsFinished()
+        // completion is Subscribers.Completion<Error>?
+        // and completion case is extension of Subscribers  either .finished or .failure
+//        self.videoDone.send(completion: completion)
+    }
+    
+    func start() {
+        guard assetWriter.startWriting() else {
+//            subject.send(completion: .failure(assetWriter.error!))
+            return
+        }
+        // skipping the fmp4writer #transferSamplesUntilWriterInputPushesBack...
+
+        assetWriter.startSession(atSourceTime: startTimeOffset)
+
+    }
+        // end Video
+
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         // Respond to drawable size or orientation changes.
     }
